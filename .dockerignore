@@ -1,0 +1,4 @@
+# The Dockerfile COPYs nothing — everything is bind-mounted at runtime.
+# Keep the build context tiny and never ship secrets/source into a layer.
+*
+!Dockerfile

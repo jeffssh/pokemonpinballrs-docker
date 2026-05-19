@@ -1,0 +1,6 @@
+[submodule "pokepinballrs"]
+	path = pokepinballrs
+	url = git@github.com:jeffssh/pokepinballrs.git
+[submodule "pokemon-pinball-table"]
+	path = pokemon-pinball-table
+	url = git@github.com:jeffssh/pokemon-pinball-table.git

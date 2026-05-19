@@ -1,0 +1,8 @@
+# Auth tokens, container-local claude home, Discord token + export.
+# Never commit.
+state/
+
+# macOS
+.DS_Store
+
+# The two decomps are tracked as git submodules (see .gitmodules) — NOT ignored.

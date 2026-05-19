@@ -1,0 +1,87 @@
+services:
+  claude:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Native arm64: agbcc compiles cleanly on arm64 (verified) and the
+    # build is much faster than amd64-under-emulation. The arm-none-eabi
+    # cross-compiler emits GBA ARM code regardless of host arch, so
+    # there's no correctness cost. Final proof is `make compare` once
+    # baserom.gba is in place (agbcc-on-arm64 is community-standard in
+    # pret decomps and expected to match).
+    platform: linux/arm64
+    container_name: pokepin-claude
+    stdin_open: true
+    tty: true
+
+    # Runs as jeff (uid=501, gid=20) — matches host file ownership so the
+    # bind-mounted pokepinballrs working tree stays usable by host git.
+    # HOME is /Users/jeff, so Claude keys project state at
+    # ~/.claude/projects/-Users-jeff-Documents-github-pokemonpinballrs-docker-pokepinballrs/
+    # — identical to the host path. Sessions are cross-compatible.
+
+    # ESCAPE POSTURE: only the two decomp submodule working trees, state/,
+    # and claude-config/ are mounted below. The orchestration repo ROOT —
+    # its .git, .gitmodules, Dockerfile, docker-compose.yml, start.sh,
+    # run.sh, claude-config sources — is NEVER mounted, so the host-executed
+    # sandbox-definition files are unreachable (and unwritable) from inside
+    # the container. The submodules keep their .git in-tree (not absorbed to
+    # .git/modules), so nothing under the orchestration .git is ever exposed.
+    volumes:
+      # --- pokepinballrs submodule (the working tree): READ/WRITE ---
+      # All decomp progress persists on the host. Tracked as a submodule.
+      - ./pokepinballrs:/Users/jeff/Documents/github/pokemonpinballrs-docker/pokepinballrs
+
+      # --- pokemon-pinball-table submodule (RE reference): READ ONLY ---
+      # The Game Boy original informs the GBA decomp. Whole tree ro -> the
+      # agent can read its history/source but cannot write anything (incl.
+      # its .git/hooks), so it carries no host-RCE vector.
+      - ./pokemon-pinball-table:/Users/jeff/Documents/github/pokemonpinballrs-docker/pokemon-pinball-table:ro
+
+      # --- Project .claude/ : READ ONLY (prompt-injection guard) ---
+      # More-specific mount overrides the rw project mount above. A
+      # prompt-injected agent cannot rewrite the project's own skills /
+      # hooks / settings / CLAUDE.md to escalate on a later run.
+      - ./pokepinballrs/.claude:/Users/jeff/Documents/github/pokemonpinballrs-docker/pokepinballrs/.claude:ro
+
+      # --- .git/hooks + .git/config : READ ONLY (host-RCE guard) ---
+      # The single biggest escape vector: git hooks/config in a shared
+      # .git are arbitrary code that runs ON THE HOST when you later run
+      # git in this tree. A poisoned agent could drop a post-commit /
+      # pre-push hook or a core.fsmonitor/sshCommand/alias and own the
+      # host. Commits don't need to write hooks/ or config, so locking
+      # these ro keeps the workflow intact AND makes the commit-msg /
+      # pre-push guards tamper-proof from inside the sandbox.
+      - ./pokepinballrs/.git/hooks:/Users/jeff/Documents/github/pokemonpinballrs-docker/pokepinballrs/.git/hooks:ro
+      - ./pokepinballrs/.git/config:/Users/jeff/Documents/github/pokemonpinballrs-docker/pokepinballrs/.git/config:ro
+
+      # --- Container-local ~/.claude ---
+      # Auth tokens, caches, container-local history. NOT the host's.
+      - ./state/claude-home:/Users/jeff/.claude
+
+      # --- Host session punch-throughs (override claude-home per path) ---
+      # Direct bind mounts to the host so `claude --resume` works from
+      # either environment and progress is crash-proof.
+      - ${HOME}/.claude/projects/-Users-jeff-Documents-github-pokemonpinballrs-docker-pokepinballrs:/Users/jeff/.claude/projects/-Users-jeff-Documents-github-pokemonpinballrs-docker-pokepinballrs
+      - ${HOME}/.claude/history.jsonl:/Users/jeff/.claude/history.jsonl
+      - ${HOME}/.claude/tasks:/Users/jeff/.claude/tasks
+      - ${HOME}/.claude/file-history:/Users/jeff/.claude/file-history
+
+      # --- Trusted, version-controlled config: READ ONLY ---
+      # Ships the quarantine subagent + sandbox policy. Tamper-proof from
+      # inside the container (overrides the rw claude-home per path).
+      - ./claude-config/agents:/Users/jeff/.claude/agents:ro
+      - ./claude-config/hooks:/Users/jeff/.claude/hooks:ro
+      - ./claude-config/settings.json:/Users/jeff/.claude/settings.json:ro
+      - ./claude-config/CLAUDE.md:/Users/jeff/.claude/CLAUDE.md:ro
+
+      # --- Discord export: READ ONLY ---
+      # DCE writes here (see discord-export.sh). The agent can only read
+      # it — a compromised agent cannot tamper with the captured evidence,
+      # and there is no Discord write tool anywhere in its tool surface.
+      - ./state/discord-export:/Users/jeff/discord-export:ro
+
+    working_dir: /Users/jeff/Documents/github/pokemonpinballrs-docker/pokepinballrs
+
+    # Container idles; run.sh execs `claude` into it with a TTY.
+    entrypoint: ["sleep", "infinity"]
