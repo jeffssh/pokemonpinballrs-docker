@@ -79,9 +79,12 @@ x-claude-common: &claude-common
   # NOTE: the spec said /root/.cache — written blind from inside the sandbox.
   # The container runs as jeff (HOME=/Users/jeff), so Go's cache is
   # /Users/jeff/.cache (go-build). Corrected here.
+  # exec: Docker tmpfs mounts default to noexec, but `go run`/`go build` run
+  # compiled binaries out of /tmp and the go-build cache — noexec makes them
+  # fail with "permission denied". Override it back to executable.
   tmpfs:
-    - /tmp:size=2g,mode=1777
-    - /Users/jeff/.cache:size=1g,mode=1777
+    - /tmp:size=2g,mode=1777,exec
+    - /Users/jeff/.cache:size=1g,mode=1777,exec
 
   # ---- Restart: keep the idle box up across daemon restarts / reboots ----
   restart: unless-stopped
