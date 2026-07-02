@@ -3,7 +3,10 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 HOST_CLAUDE="${HOME}/.claude"
-SLUG="-Users-jeff-Documents-github-pokemonpinballrs-docker-pokepinballrs"
+# One session slug per working dir (Claude keys sessions by cwd). Primary
+# cwd is pokemon-pinball-table; pokepinballrs kept so its history survives.
+SLUG_TABLE="-Users-jeff-Documents-github-pokemonpinballrs-docker-pokemon-pinball-table"
+SLUG_RS="-Users-jeff-Documents-github-pokemonpinballrs-docker-pokepinballrs"
 
 # pokepinballrs + pokemon-pinball-table are git submodules of this repo.
 # Init them if this is a fresh clone (uses YOUR ssh creds on the host).
@@ -15,10 +18,12 @@ fi
 # Host-side sync before launch: uses YOUR ssh creds (the container has
 # none, by design). Fast-forward only — never clobbers local/agent work.
 # If history diverged, the in-container SessionStart hook surfaces it.
-echo "Syncing pokepinballrs with collaborators..."
-git -C pokepinballrs pull --ff-only 2>/dev/null \
-    && echo "  up to date / fast-forwarded." \
-    || echo "  skipped ff-only pull (diverged or offline) — in-container hook will report."
+for sm in pokemon-pinball-table pokepinballrs; do
+    echo "Syncing ${sm} with collaborators..."
+    git -C "$sm" pull --ff-only 2>/dev/null \
+        && echo "  up to date / fast-forwarded." \
+        || echo "  skipped ff-only pull (diverged or offline) — in-container hook will report."
+done
 
 # Container-local state + trusted config dirs.
 mkdir -p state/claude-home state/discord-export state/secrets claude-config/agents claude-config/hooks
@@ -28,7 +33,8 @@ mkdir -p pokepinballrs/.claude
 
 # Pre-create host session mountpoints so Docker doesn't make them
 # root-owned. These are the only host ~/.claude paths shared in.
-mkdir -p "${HOST_CLAUDE}/projects/${SLUG}" "${HOST_CLAUDE}/tasks" "${HOST_CLAUDE}/file-history"
+mkdir -p "${HOST_CLAUDE}/projects/${SLUG_TABLE}" "${HOST_CLAUDE}/projects/${SLUG_RS}" \
+         "${HOST_CLAUDE}/tasks" "${HOST_CLAUDE}/file-history"
 [ -f "${HOST_CLAUDE}/history.jsonl" ] || touch "${HOST_CLAUDE}/history.jsonl"
 
 echo "Building and starting container..."
